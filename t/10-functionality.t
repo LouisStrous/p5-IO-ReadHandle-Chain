@@ -7,6 +7,8 @@ use File::Temp;
 use Test::More;
 use IO::ReadHandle::Chain;
 
+my $skipped = 0;
+
 # reading from nothing
 
 my $cfh = IO::ReadHandle::Chain->new();
@@ -153,6 +155,10 @@ $n = $cfh->read($buffer, 10, $pos);
 is($n, 1, 'read next byte');
 is($buffer, "ext3\ntext4", 'next bytes');
 
+$n = $cfh->read($buffer, 100);
+is($n, 0, 'end of data');
+is($buffer, '', 'means empty buffer');
+
 $cfh->close;
 
 $cfh = IO::ReadHandle::Chain->new(\$source2, "$tmp");
@@ -196,4 +202,34 @@ $@ = '';
 eval { $cfh->syswrite($buffer, 5) };
 like($@, qr/^Cannot syswrite via a IO::ReadHandle::Chain/, 'printf fails');
 
-done_testing(22);
+# seeking fails
+
+$@ = '';
+eval { $cfh->seek(0, 0) };
+like($@, qr/^Cannot seek via a IO::ReadHandle::Chain/, 'printf fails');
+
+# reading from hash fails
+
+$@ = '';
+eval { $cfh = IO::ReadHandle::Chain->new({}) };
+like($@, qr/^Sources must be scalar, scalar reference, or file handle/,
+     'hash ref fails');
+
+# reading from a write-only file handle yields nothing
+
+my $fname = 'IO-functionality-temp.txt';
+if (open my $ofh, '>', $fname) {
+  print $ofh "Some text\n";
+  seek($ofh, 0, 0);
+  $@ = '';
+  $cfh = IO::ReadHandle::Chain->new($ofh);
+  @lines = <$cfh>;
+  close $ofh;
+  unlink $fname;
+  is_deeply(\@lines, [], 'read nothing from write-only file handle');
+} else {
+  diag("Cannot open $fname for writing: $!");
+  ++$skipped;
+}
+
+done_testing(27 - $skipped);

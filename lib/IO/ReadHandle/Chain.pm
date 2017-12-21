@@ -1,6 +1,6 @@
 package IO::ReadHandle::Chain;
 
-use 5.006;
+use v5.12.0;
 use strict;
 use warnings;
 
@@ -16,11 +16,11 @@ read handle
 
 =head1 VERSION
 
-Version 1.0
+Version 1.1.0
 
 =cut
 
-our $VERSION = '1.0';
+use version; our $VERSION = version->declare('v1.1.0');
 
 =head1 SYNOPSIS
 
@@ -31,41 +31,38 @@ This is convenient if you have multiple data sources of which some are
 very large and you need to pretend that they are all inside a single
 data source.
 
-  use IO::ReadHandle::Chain;
+Use the IO::ReadHandle::Chain object for reading as you would any
+other file handle.
 
-  open $ifh, '<', 'somefile.txt';
-  $text = 'This is some text.';
-  $cfh = IO::ReadHandle::Chain->new('file.txt', \$text, $ifh);
-  print while <$cfh>;
-  # prints lines from file 'file.txt', then lines from scalar $text,
-  # then lines from file handle $ifh
+    use IO::ReadHandle::Chain;
 
-  # or read bytes instead
-  $buffer = '';
-  $bytecount = read($cfh, $buffer, 100);
+    open $ifh, '<', 'somefile.txt';
+    $text = 'This is some text.';
+    $cfh = IO::ReadHandle::Chain->new('file.txt', \$text, $ifh);
+    print while <$cfh>;
+    # prints lines from file 'file.txt', then lines from scalar $text,
+    # then lines from file handle $ifh
 
-  close($cfh);
+    @lines = <$cfh>;              # or get all lines at once
 
-  # OO, too
-  $line = $cfh->getline;
-  @lines = $cfh->getlines;
-  $n = $cfh->read($buffer, $size, $offset);
-  $cfh->close;
-  print "end!\n" if $cfh->eof;
+    # or read bytes instead
+    $buffer = '';
+    $bytecount = read($cfh, $buffer, 100);
+    $bytecount = sysread($cfh, $buffer, 100);
 
-=head1 DESCRIPTION
+    # or single characters
+    $c = getc($cfh);
 
-Use the filehandle object as you would any other file handle for
-reading.
+    close($cfh);
 
-  $cfh = IO::ReadHandle::Chain->new(@sources);
-
-  $line = $cfh->getline;        # one line
-  $line = <$cfh>;               # same
-  @lines = <$cfh>;              # all remaining lines
-  print "eof!\n" if $cfh->eof;
-  $cfh->read($buffer, $length, $offset)
-  $cfh->close
+    # OO, too
+    $line = $cfh->getline;
+    @lines = $cfh->getlines;
+    $bytecount = $cfh->read($buffer, $size, $offset);
+    $bytecount = $cfh->sysread($buffer, $size, $offset);
+    $c = $cfh->getc;
+    $cfh->close;
+    print "end!\n" if $cfh->eof;
 
 You cannot write or seek through an IO::ReadHandle::Chain.
 
@@ -74,8 +71,8 @@ record separator is used to separate the data into lines.
 
 For any of the data sources that are file handles, when the end of the
 associated data stream is reached, or if the chain filehandle object
-is closed, then it tries to reset the file handle's position to what
-it was when the module started reading from the file handle.
+is closed, then the object tries to reset the file handle's position
+to what it was when the module started reading from the file handle.
 
 The chain filehandle object does not close any of the file handles
 that are passed to it as data sources.
@@ -106,7 +103,7 @@ sub new {
 sub TIEHANDLE {
   my ($class, @sources) = @_;
   foreach my $source (@sources) {
-    croak "Sources must be scalar, scalar reference, or file handle.\n"
+    croak "Sources must be scalar, scalar reference, or file handle"
       if ref($source) ne ''
       and reftype($source) ne 'GLOB'
       and reftype($source) ne 'SCALAR';
@@ -139,7 +136,7 @@ sub EOF {
       open my $ifh, '<', $source or croak $!;
       $self->{ifh} = $ifh;
     } else {
-      croak 'Unsupported source type ' . ref($source) . "\n";
+      croak 'Unsupported source type ' . ref($source);
     }
   }
 
@@ -190,7 +187,10 @@ sub READ {
   my $bufref = \$_[1];
   $offset //= 0;
 
-  return 0 if $self->EOF;
+  if ($self->EOF) {
+    $$bufref = '';
+    return 0;
+  }
 
   # $self->EOF has lined up the next source in $self->{ifh}
 
@@ -242,6 +242,11 @@ sub PRINTF {
 sub WRITE {
   my ($self) = @_;
   croak "Cannot syswrite via a " . blessed($self);
+}
+
+sub SEEK {
+  my ($self) = @_;
+  croak "Cannot seek via a " . blessed($self);
 }
 
 =head1 AUTHOR
