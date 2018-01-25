@@ -175,8 +175,29 @@ sub READ {
   my $bufref = \$_[1];
   $offset //= 0;
 
+  # Adjust buffer for appending at $offset: Any previous contents
+  # beyond that offset are lost.  If the buffer is not that long, then
+  # pad with \0 until it is long enough.  (This is what CORE::read
+  # does, too.)
+
+  $$bufref //= '';
+  my $l = length($$bufref);
+  if ($offset < 0) {
+    $offset = $l - $offset;
+    if ($offset < 0) {
+      # TODO: what does CORE::read do in this case?
+      $offset = 0;
+    }
+  }
+  if ($offset < $l) {
+    # chop off everything beyond $offset
+    substr $$bufref, $offset, $l - $offset, '';
+  } elsif ($offset > $l) {
+    # pad \0 until the offset
+    $$bufref .= '\x0' x ($offset - $l);
+  }
+
   if ($self->EOF) {
-    $$bufref = '';
     return 0;
   }
 
