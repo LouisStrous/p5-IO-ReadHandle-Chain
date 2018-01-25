@@ -5,8 +5,7 @@ use strict;
 use warnings;
 
 use Carp;
-use IO::Handle qw(input_record_separator);
-use Scalar::Util qw(blessed reftype);
+use Scalar::Util qw(reftype);
 use Symbol qw(gensym);
 
 =head1 NAME
@@ -32,7 +31,7 @@ very large and you need to pretend that they are all inside a single
 data source.
 
 Use the IO::ReadHandle::Chain object for reading as you would any
-other file handle.
+other filehandle.
 
     use IO::ReadHandle::Chain;
 
@@ -42,6 +41,8 @@ other file handle.
     print while <$cfh>;
     # prints lines from file 'file.txt', then lines from scalar $text,
     # then lines from file handle $ifh
+
+    $line_number = $.; # cumulative line number from all sources
 
     @lines = <$cfh>;              # or get all lines at once
 
@@ -61,10 +62,15 @@ other file handle.
     $bytecount = $cfh->read($buffer, $size, $offset);
     $bytecount = $cfh->sysread($buffer, $size, $offset);
     $c = $cfh->getc;
+    $line_number = $cfh->input_line_number;
     $cfh->close;
     print "end!\n" if $cfh->eof;
 
-You cannot write or seek through an IO::ReadHandle::Chain.
+    # specific to IO::ReadHandle::Chain:
+    $current_source = $cfh->current_source;
+
+The module raises an exception if you try to C<write> or C<seek> or
+C<tell> through an C<IO::ReadHandle::Chain>.
 
 When reading by lines, then for each data source the associated input
 record separator is used to separate the data into lines.
@@ -72,9 +78,11 @@ record separator is used to separate the data into lines.
 The chain filehandle object does not close any of the file handles
 that are passed to it as data sources.
 
-=head1 SUBROUTINES/METHODS
+=head1 METHODS
 
 =head2 new(@sources)
+
+  $cfh = IO::ReadHandle::Chain->new(@sources);
 
 Creates a filehandle object based on the specified C<@sources>.  The
 sources are read in the order in which they are specified.  To read
@@ -90,53 +98,286 @@ a file handle.
 
 sub new {
   my ($class, @sources) = @_;
-  my $ifh = gensym();                            # get generic symbol
-  tie(*$ifh, __PACKAGE__, @sources);             # calls TIEHANDLE
-  return $ifh;
+  my $self = bless gensym(), ref($class) || $class;
+  tie *$self, $self;
+  return $self->open(@sources);
 }
 
 sub TIEHANDLE {
+  return $_[0] if ref($_[0]);
   my ($class, @sources) = @_;
+  my $self = bless gensym(), $class;
+  return $self->open(@sources);
+}
+
+# gets the specified field from the module's hash in the GLOB's hash
+# part
+sub _get {
+  my ($self, $field) = @_;
+  my $pkg = __PACKAGE__;
+  return *$self->{$pkg}->{$field};
+}
+
+# sets the specified field in the module's hash in the GLOB's hash
+# part to the specified value
+sub _set {
+  my ($self, $field, $value) = @_;
+  my $pkg = __PACKAGE__;
+  my $old_value = *$self->{$pkg}->{$field};
+  *$self->{$pkg}->{$field} = $value;
+  return $self;
+}
+
+# if the $field is defined, then deletes the specified field from the
+# module's hash in the object's hash part.  Otherwise, deletes the
+# module's hash from the GLOB's hash part.
+sub _delete {
+  my ($self, $field) = @_;
+  my $pkg = __PACKAGE__;
+  if (defined $field) {
+    delete *$self->{$pkg}->{$field};
+  } else {
+    delete *$self->{$pkg};
+  }
+  return $self;
+}
+
+=head2 close
+
+  $cfh->close;
+  close $cfh;
+
+Closes the IO::ReadHandle::Chain.  Closes any internal filehandles
+that the instance was using, but does not close any filehandles that
+were passed into the instance as sources.
+
+Returns the IO::ReadHandle::Chain.
+
+=cut
+
+sub close {
+  my ($self) = @_;
+  $self->_delete;
+  return $self;
+}
+
+=head2 current_source
+
+  $current_source = $cfh->current_source;
+
+Returns text describing the source that the next input through
+IO::ReadHandle::Chain will come from, or (at EOF) that the last input
+came from.
+
+For a source specified as a path name, returns that path name.
+
+For a source specified as a file handle, attempts to call the
+C<current_source> method on that file handle.  If that file handle
+does not support that method, or returns the undefined value, then the
+C<current_source> method returns the stringified version of the file
+handle.
+
+For a source specified as a reference to a scalar, returns
+C<SCALAR(...)> with the C<...> replaced with up to the first 10
+characters of the scalar, with newlines replaced by spaces.
+
+=cut
+
+sub current_source {
+  my ($self) = @_;
+  my $source = $self->_get('source');
+  return 'undef' unless defined $source;
+  if (ref $source) {
+    if (reftype($source) eq 'GLOB') {
+      my $s = eval { $source->current_source };
+      return defined($s)? $s: "$source";
+    }
+    if (reftype($source) eq 'SCALAR') {
+      return sprintf('SCALAR(%.10s)', $$source =~ s/\n/ /gr);
+    }
+  }
+  return $source;
+}
+
+=head2 eof
+
+  $end_of_data = eof $cfh;
+  $end_of_data = $cfh->eof;
+
+Returns 1 when there is no (more) data to read through the
+IO::ReadHandle::Chain, and C<''> otherwise, similar to CORE::eof and
+IO::Handle::eof.
+
+=cut
+
+sub eof {
+  return EOF(@_);
+}
+
+=head2 getc
+
+  $char = $cfh->getc;
+  $char = getc $ifh;
+
+Returns the next character from the IO::ReadHandle::Chain, or C<undef>
+if there are no more characters, similar to the CORE::getc function
+and the IO::Handle::getc method.
+
+=cut
+
+sub getc {
+  return GETC(@_);
+}
+
+=head2 getline
+
+  $line = $cfh->getline;
+  $line = <$cfh>;
+
+Reads the next line from the IO::ReadHandle::Chain, like
+IO::Handle::getline.  For sources passed as filehandles, uses the
+input record separator of that filehandle.  For sources passed as path
+names or scalar references, uses the current input record separator
+(C<$/>).
+
+=cut
+
+sub getline {
+  my ($self) = @_;
+  my $line = <$self>;
+  return $line;
+}
+
+=head2 getlines
+
+  @lines = $cfh->getlines;
+  @lines = <$cfh>;
+
+Reads all remaining lines from the IO::ReadHandle::Chain, like
+IO::Handle::getlines.  For sources passed as filehandles, uses the
+input record separator of that filehandle.  For sources passed as path
+names or scalar references, uses the current input record separator
+(C<$/>).
+
+=cut
+
+sub getlines {
+  my ($self) = @_;
+  my @lines = <$self>;
+  return @lines;
+}
+
+=head2 input_line_number
+
+  $line_number = $cfh->input_line_number;                # get
+  $previous_value = $cfh->input_line_number($new_value); # set
+
+Returns the number of lines read through the IO::ReadHandle::Chain,
+and makes that number also available in the special variable C<$.>,
+similar to IO::Handle::input_line_number.  If no lines have been read
+yet, then returns C<undef>.
+
+The line number is cumulative across all sources specified for the
+IO::ReadHandle::Chain.
+
+If an argument is specified, then the method sets the current line
+number to that value.
+
+=cut
+
+sub input_line_number {
+  my $self = shift;
+  if (@_) {
+    $self->_set('line_number', $_[0]);
+  }
+  return $self->_get('line_number');
+}
+
+=head2 open(@sources)
+
+  $cfh->open(@sources);
+
+(Re)opens the IO::ReadHandle::Chain object, for reading the specified
+C<@sources>.  See L</new> for details about the C<@sources>.  Croaks
+if any of the sources are unacceptable.
+
+Returns the IO::ReadHandle::Chain on success.
+
+=cut
+
+sub open {
+  my ($self, @sources) = @_;
   foreach my $source (@sources) {
     croak "Sources must be scalar, scalar reference, or file handle"
       if ref($source) ne ''
       and reftype($source) ne 'GLOB'
       and reftype($source) ne 'SCALAR';
   }
-  return bless { sources => \@sources }, $class;
+  # we must preserve the line number, but clear everything else
+  my $line_number = $self->_get('line_number');
+  $self->_delete;               # clear all
+  $self->_set(line_number => $line_number);
+
+  # store the new sources
+  $self->_set(sources => \@sources);
+
+  return $self;
 }
+
+=head2 read($buffer, $length, $offset)
+
+  $cfh->read($buffer, $length, $offset);
+  read $cfh, $buffer, $length, $offset;
+
+Attempts to read C<$length> characters from the IO::ReadHandle::Chain
+into the C<$buffer> at offset C<$offset>, similar to the CORE::read
+function and the IO::Handle::read method.  Returns the number of
+characters read, or 0 when there are no more characters.
+
+=cut
+
+sub read {
+  return READ(@_);
+}
+
+# Tie::Handle method implementations
 
 sub EOF {
   my ($self) = @_;
-  return 0 if $self->{ifh} && not($self->{ifh}->eof);
+  my $ifh = $self->_get('ifh');
+  return '' if $ifh && not($ifh->eof);
 
-  while (not($self->{ifh}) || $self->{ifh}->eof) {
-    if ($self->{ifh}) {
-      delete $self->{ifh};
+  while (not($self->_get('ifh')) || $self->_get('ifh')->eof) {
+    if ($self->_get('ifh')) {
+      $self->_delete('ifh');
     }
-    last unless @{$self->{sources}};
-    my $source = shift @{$self->{sources}};
-    my $ifh;
+    my $sources_lref = $self->_get('sources');
+    last unless $sources_lref && @{$sources_lref};
+    my $source = shift @{$sources_lref};
+    $self->_set(source => $source);
     if ((reftype($source) // '') eq 'GLOB') {
-      $self->{ifh} = $source;
+      $self->_set(ifh => $source);
     } elsif (ref($source) eq ''                 # read from  file
              or reftype($source) eq 'SCALAR') { # read from scalar
-      open my $ifh, '<', $source or croak $!;
-      $self->{ifh} = $ifh;
+      CORE::open my $ifh, '<', $source or croak $!;
+      $self->_set(ifh => $ifh);
     } else {
       croak 'Unsupported source type ' . ref($source);
     }
   }
 
-  if ($self->{ifh}) {
+  my $result;
+  if ($self->_get('ifh')) {
     # figure out this file's input record separator
-    my $old = select($self->{ifh});
-    $self->{input_record_separator} = $/;
+    my $old = select($self->_get('ifh'));
+    $self->_set(input_record_separator => $/);
     select($old);
-    return '';
+    $result = '';
   } else {
-    return 1;
+    $result = 1;
   }
+  $. = $self->_get('line_number');
+  return $result;
 }
 
 sub READLINE {
@@ -147,24 +388,32 @@ sub READLINE {
     push @lines, $line while $line = $self->READLINE;
     return @lines;
   } else {
-    return undef if $self->EOF;
+    if ($self->EOF) {
+      $. = $self->_get('line_number');
+      return;
+    }
 
     # $self->EOF has lined up the next source in $self->{ifh}
 
-    my $ifh = $self->{ifh};
+    my $ifh = $self->_get('ifh');
     my $line = <$ifh>;
     if ($ifh->eof) {
       # Does line end in $ifh's input record separator?  If yes, then
       # return the line.  If no, then attempt to append the first line
       # from the next source.
-      while ($line !~ m/$self->{input_record_separator}$/) {
+      my $rs = $self->_get('input_record_separator');
+      while ($line !~ m/$rs$/) {
         if ($ifh->eof) {
           last if $self->EOF;
           # $self->EOF has lined up the next source in $self->{ifh}
-          $ifh = $self->{ifh};
+          $ifh = $self->_get('ifh');
         }
         $line .= <$ifh>;
       }
+    }
+    if (defined $line) {
+      $self->_set(line_number => ($self->_get('line_number') // 0) + 1);
+      $. = $self->_get('line_number');
     }
     return $line;
   }
@@ -203,12 +452,12 @@ sub READ {
 
   # $self->EOF has lined up the next source in $self->{ifh}
 
-  my $ifh = $self->{ifh};
+  my $ifh = $self->_get('ifh');
   my $n = $ifh->read($$bufref, $length, $offset);
   while ($n < $length) {
     last if $self->EOF;
     # $self->EOF has lined up the next source in $self->{ifh}
-    $ifh = $self->{ifh};
+    $ifh = $self->_get('ifh');
     my $thisn = $ifh->read($$bufref, $length - $n, $offset + $n);
     $n += $thisn;
   }
@@ -230,26 +479,6 @@ sub CLOSE {
     @{$self->{sources}} = ();
   }
   return;
-}
-
-sub PRINT {
-  my ($self) = @_;
-  croak "Cannot print via a " . blessed($self);
-}
-
-sub PRINTF {
-  my ($self) = @_;
-  croak "Cannot printf via a " . blessed($self);
-}
-
-sub WRITE {
-  my ($self) = @_;
-  croak "Cannot syswrite via a " . blessed($self);
-}
-
-sub SEEK {
-  my ($self) = @_;
-  croak "Cannot seek via a " . blessed($self);
 }
 
 =head1 AUTHOR
