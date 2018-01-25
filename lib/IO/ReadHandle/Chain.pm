@@ -16,11 +16,11 @@ read handle
 
 =head1 VERSION
 
-Version 1.1.0
+Version 1.2.0
 
 =cut
 
-use version; our $VERSION = version->declare('v1.1.0');
+use version; our $VERSION = version->declare('v1.2.0');
 
 =head1 SYNOPSIS
 
@@ -69,11 +69,6 @@ You cannot write or seek through an IO::ReadHandle::Chain.
 When reading by lines, then for each data source the associated input
 record separator is used to separate the data into lines.
 
-For any of the data sources that are file handles, when the end of the
-associated data stream is reached, or if the chain filehandle object
-is closed, then the object tries to reset the file handle's position
-to what it was when the module started reading from the file handle.
-
 The chain filehandle object does not close any of the file handles
 that are passed to it as data sources.
 
@@ -117,12 +112,6 @@ sub EOF {
 
   while (not($self->{ifh}) || $self->{ifh}->eof) {
     if ($self->{ifh}) {
-      if (exists $self->{initial_position}) {
-        # Try to reset the file handle's position.  It may fail, for
-        # example if the file handle is not seekable.
-        eval { seek $self->{ifh}, $self->{initial_position}, 0 };
-        delete $self->{initial_position};
-      }
       delete $self->{ifh};
     }
     last unless @{$self->{sources}};
@@ -130,7 +119,6 @@ sub EOF {
     my $ifh;
     if ((reftype($source) // '') eq 'GLOB') {
       $self->{ifh} = $source;
-      $self->{initial_position} = tell($source);
     } elsif (ref($source) eq ''                 # read from  file
              or reftype($source) eq 'SCALAR') { # read from scalar
       open my $ifh, '<', $source or croak $!;
@@ -216,12 +204,6 @@ sub GETC {
 sub CLOSE {
   my ($self) = @_;
   if ($self->{ifh}) {
-    if (exists $self->{initial_position}) {
-      # Try to reset the file handle's position.  It may fail, for
-      # example if the file handle is not seekable.
-      eval { seek $self->{ifh}, $self->{initial_position}, 0 };
-      delete $self->{initial_position};
-    }
     delete $self->{ifh};
     delete $self->{input_record_separator};
     @{$self->{sources}} = ();

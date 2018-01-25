@@ -88,13 +88,10 @@ is_deeply(\@lines, ["text3\n",
                     "by far!text5\n",
                     "text6"], 'file handle');
 
-is($tmp->tell, 0, 'file handle position at the start unchanged');
-
 # read from file handle that isn't at the beginning
 
-<$tmp>;
-
-my $pos = $tmp->tell;
+$tmp->seek(0, 0);               # rewind
+<$tmp>;                         # foo is better
 
 $cfh = IO::ReadHandle::Chain->new($tmp);
 @lines = <$cfh>;
@@ -103,7 +100,6 @@ $cfh->close;
 is_deeply(\@lines, ["than bar is\n",
                     "by far!"],
           'file handle in the middle');
-is($tmp->tell, $pos, 'file handle position in the middle unchanged');
 
 # read from the file through the file name
 
@@ -149,7 +145,7 @@ my $n = read($cfh, $buffer, 9);
 is($n, 9, 'read 9 bytes');
 is($buffer, "ext3\ntext", 'bytes');
 
-$pos = $n;
+my $pos = $n;
 $n = $cfh->read($buffer, 10, $pos);
 
 is($n, 1, 'read next byte');
@@ -232,4 +228,4 @@ if (open my $ofh, '>', $fname) {
   ++$skipped;
 }
 
-done_testing(27 - $skipped);
+done_testing(25 - $skipped);
