@@ -72,8 +72,8 @@ other filehandle.
 The module raises an exception if you try to C<write> or C<seek> or
 C<tell> through an C<IO::ReadHandle::Chain>.
 
-When reading by lines, then for each data source the associated input
-record separator is used to separate the data into lines.
+When reading by lines, then the input record separator C<$/> is used
+to separate the data into lines.
 
 The chain filehandle object does not close any of the file handles
 that are passed to it as data sources.
@@ -235,10 +235,8 @@ sub getc {
   $line = <$cfh>;
 
 Reads the next line from the IO::ReadHandle::Chain, like
-IO::Handle::getline.  For sources passed as filehandles, uses the
-input record separator of that filehandle.  For sources passed as path
-names or scalar references, uses the current input record separator
-(C<$/>).
+IO::Handle::getline.  The input record separator (C<$/>) or
+end-of-data mark the end of the line.
 
 =cut
 
@@ -254,10 +252,8 @@ sub getline {
   @lines = <$cfh>;
 
 Reads all remaining lines from the IO::ReadHandle::Chain, like
-IO::Handle::getlines.  For sources passed as filehandles, uses the
-input record separator of that filehandle.  For sources passed as path
-names or scalar references, uses the current input record separator
-(C<$/>).
+IO::Handle::getlines.  The input record separator (C<$/>) or
+end-of-data mark the end of each line.
 
 =cut
 
@@ -368,10 +364,6 @@ sub EOF {
 
   my $result;
   if ($self->_get('ifh')) {
-    # figure out this file's input record separator
-    my $old = select($self->_get('ifh'));
-    $self->_set(input_record_separator => $/);
-    select($old);
     $result = '';
   } else {
     $result = 1;
@@ -398,11 +390,10 @@ sub READLINE {
     my $ifh = $self->_get('ifh');
     my $line = <$ifh>;
     if ($ifh->eof) {
-      # Does line end in $ifh's input record separator?  If yes, then
+      # Does line end in the input record separator?  If yes, then
       # return the line.  If no, then attempt to append the first line
       # from the next source.
-      my $rs = $self->_get('input_record_separator');
-      while ($line !~ m/$rs$/) {
+      while ($line !~ m#$/$#) {
         if ($ifh->eof) {
           last if $self->EOF;
           # $self->EOF has lined up the next source in $self->{ifh}
@@ -475,7 +466,6 @@ sub CLOSE {
   my ($self) = @_;
   if ($self->{ifh}) {
     delete $self->{ifh};
-    delete $self->{input_record_separator};
     @{$self->{sources}} = ();
   }
   return;
