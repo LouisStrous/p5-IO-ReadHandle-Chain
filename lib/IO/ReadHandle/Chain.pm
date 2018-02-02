@@ -113,15 +113,15 @@ a file handle.
 =cut
 
 sub new {
-  my ($class, @sources) = @_;
+  my ( $class, @sources ) = @_;
   my $self = bless gensym(), ref($class) || $class;
   tie *$self, $self;
   return $self->open(@sources);
 }
 
 sub TIEHANDLE {
-  return $_[0] if ref($_[0]);
-  my ($class, @sources) = @_;
+  return $_[0] if ref( $_[0] );
+  my ( $class, @sources ) = @_;
   my $self = bless gensym(), $class;
   return $self->open(@sources);
 }
@@ -129,7 +129,7 @@ sub TIEHANDLE {
 # gets the specified field from the module's hash in the GLOB's hash
 # part
 sub _get {
-  my ($self, $field) = @_;
+  my ( $self, $field ) = @_;
   my $pkg = __PACKAGE__;
   return *$self->{$pkg}->{$field};
 }
@@ -137,7 +137,7 @@ sub _get {
 # sets the specified field in the module's hash in the GLOB's hash
 # part to the specified value
 sub _set {
-  my ($self, $field, $value) = @_;
+  my ( $self, $field, $value ) = @_;
   my $pkg = __PACKAGE__;
   *$self->{$pkg}->{$field} = $value;
   return $self;
@@ -147,11 +147,12 @@ sub _set {
 # module's hash in the object's hash part.  Otherwise, deletes the
 # module's hash from the GLOB's hash part.
 sub _delete {
-  my ($self, $field) = @_;
+  my ( $self, $field ) = @_;
   my $pkg = __PACKAGE__;
-  if (defined $field) {
+  if ( defined $field ) {
     delete *$self->{$pkg}->{$field};
-  } else {
+  }
+  else {
     delete *$self->{$pkg};
   }
   return $self;
@@ -202,13 +203,13 @@ sub current_source {
   my ($self) = @_;
   my $source = $self->_get('source');
   return unless defined $source;
-  if (ref $source) {
-    if (reftype($source) eq 'GLOB') {
+  if ( ref $source ) {
+    if ( reftype($source) eq 'GLOB' ) {
       my $s = eval { $source->current_source };
-      return defined($s)? $s: "$source";
+      return defined($s) ? $s : "$source";
     }
-    if (reftype($source) eq 'SCALAR') {
-      return sprintf('SCALAR(%.10s)', $$source =~ s/\n/ /gr);
+    if ( reftype($source) eq 'SCALAR' ) {
+      return sprintf( 'SCALAR(%.10s)', $$source =~ s/\n/ /gr );
     }
   }
   return $source;
@@ -246,15 +247,16 @@ that value.
 =cut
 
 sub get_field {
-  my ($self, $field, $default) = @_;
+  my ( $self, $field, $default ) = @_;
   my $href = $self->_get('_');
-  if (@_ >= 3) {                # $default specified
-    if (not $href) {
+  if ( @_ >= 3 ) {    # $default specified
+    if ( not $href ) {
       $href = {};
-      $self->_set('_', $href);
+      $self->_set( '_', $href );
     }
     $href->{$field} //= $default;
-  } else {                      # no $default specified
+  }
+  else {              # no $default specified
     return unless $href;
   }
   return $href->{$field};
@@ -330,7 +332,7 @@ number to that value.
 sub input_line_number {
   my $self = shift;
   if (@_) {
-    $self->_set('line_number', $_[0]);
+    $self->_set( 'line_number', $_[0] );
   }
   return $self->_get('line_number');
 }
@@ -348,20 +350,21 @@ Returns the IO::ReadHandle::Chain on success.
 =cut
 
 sub open {
-  my ($self, @sources) = @_;
+  my ( $self, @sources ) = @_;
   foreach my $source (@sources) {
     croak "Sources must be scalar, scalar reference, or file handle"
       if ref($source) ne ''
       and reftype($source) ne 'GLOB'
       and reftype($source) ne 'SCALAR';
   }
+
   # we must preserve the line number, but clear everything else
   my $line_number = $self->_get('line_number');
-  $self->_delete;               # clear all
-  $self->_set(line_number => $line_number);
+  $self->_delete;    # clear all
+  $self->_set( line_number => $line_number );
 
   # store the new sources
-  $self->_set(sources => \@sources);
+  $self->_set( sources => \@sources );
 
   return $self;
 }
@@ -392,7 +395,7 @@ exists.  Returns the filehandle.
 =cut
 
 sub remove_field {
-  my ($self, $field) = @_;
+  my ( $self, $field ) = @_;
   my $href = $self->_get('_');
   if ($href) {
     delete $href->{$field};
@@ -410,10 +413,10 @@ specified C<$value>.  Returns the filehandle.
 =cut
 
 sub set_field {
-  my ($self, $field, $value) = @_;
+  my ( $self, $field, $value ) = @_;
   my $href = $self->_get('_');
-  if (not $href) {
-    $self->_set('_', $href = {});
+  if ( not $href ) {
+    $self->_set( '_', $href = {} );
   }
   $href->{$field} = $value;
   return $self;
@@ -424,31 +427,37 @@ sub set_field {
 sub EOF {
   my ($self) = @_;
   my $ifh = $self->_get('ifh');
-  return '' if $ifh && not($ifh->eof);
+  return '' if $ifh && not( $ifh->eof );
 
-  while (not($self->_get('ifh')) || $self->_get('ifh')->eof) {
-    if ($self->_get('ifh')) {
+  while ( not( $self->_get('ifh') ) || $self->_get('ifh')->eof ) {
+    if ( $self->_get('ifh') ) {
       $self->_delete('ifh');
     }
     my $sources_lref = $self->_get('sources');
     last unless $sources_lref && @{$sources_lref};
     my $source = shift @{$sources_lref};
-    $self->_set(source => $source);
-    if ((reftype($source) // '') eq 'GLOB') {
-      $self->_set(ifh => $source);
-    } elsif (ref($source) eq ''                 # read from  file
-             or reftype($source) eq 'SCALAR') { # read from scalar
+    $self->_set( source => $source );
+    if ( ( reftype($source) // '' ) eq 'GLOB' ) {
+      $self->_set( ifh => $source );
+    }
+    elsif (
+      ref($source) eq ''    # read from  file
+      or reftype($source) eq 'SCALAR'
+      )
+    {                       # read from scalar
       CORE::open my $ifh, '<', $source or croak $!;
-      $self->_set(ifh => $ifh);
-    } else {
+      $self->_set( ifh => $ifh );
+    }
+    else {
       croak 'Unsupported source type ' . ref($source);
     }
   }
 
   my $result;
-  if ($self->_get('ifh')) {
+  if ( $self->_get('ifh') ) {
     $result = '';
-  } else {
+  }
+  else {
     $result = 1;
   }
   $. = $self->_get('line_number');
@@ -462,31 +471,34 @@ sub READLINE {
     my $line;
     push @lines, $line while $line = $self->READLINE;
     return @lines;
-  } else {
-    if ($self->EOF) {
+  }
+  else {
+    if ( $self->EOF ) {
       $. = $self->_get('line_number');
       return;
     }
 
     # $self->EOF has lined up the next source in $self->{ifh}
 
-    my $ifh = $self->_get('ifh');
+    my $ifh  = $self->_get('ifh');
     my $line = <$ifh>;
-    if ($ifh->eof) {
+    if ( $ifh->eof ) {
+
       # Does line end in the input record separator?  If yes, then
       # return the line.  If no, then attempt to append the first line
       # from the next source.
-      while ($line !~ m#$/$#) {
-        if ($ifh->eof) {
+      while ( $line !~ m#$/$# ) {
+        if ( $ifh->eof ) {
           last if $self->EOF;
+
           # $self->EOF has lined up the next source in $self->{ifh}
           $ifh = $self->_get('ifh');
         }
         $line .= <$ifh>;
       }
     }
-    if (defined $line) {
-      $self->_set(line_number => ($self->_get('line_number') // 0) + 1);
+    if ( defined $line ) {
+      $self->_set( line_number => ( $self->_get('line_number') // 0 ) + 1 );
       $. = $self->_get('line_number');
     }
     return $line;
@@ -494,7 +506,7 @@ sub READLINE {
 }
 
 sub READ {
-  my ($self, undef, $length, $offset) = @_;
+  my ( $self, undef, $length, $offset ) = @_;
   my $bufref = \$_[1];
   $offset //= 0;
 
@@ -505,34 +517,39 @@ sub READ {
 
   $$bufref //= '';
   my $l = length($$bufref);
-  if ($offset < 0) {
+  if ( $offset < 0 ) {
     $offset = $l - $offset;
-    if ($offset < 0) {
+    if ( $offset < 0 ) {
+
       # TODO: what does CORE::read do in this case?
       $offset = 0;
     }
   }
-  if ($offset < $l) {
+  if ( $offset < $l ) {
+
     # chop off everything beyond $offset
     substr $$bufref, $offset, $l - $offset, '';
-  } elsif ($offset > $l) {
+  }
+  elsif ( $offset > $l ) {
+
     # pad \0 until the offset
-    $$bufref .= '\x0' x ($offset - $l);
+    $$bufref .= '\x0' x ( $offset - $l );
   }
 
-  if ($self->EOF) {
+  if ( $self->EOF ) {
     return 0;
   }
 
   # $self->EOF has lined up the next source in $self->{ifh}
 
   my $ifh = $self->_get('ifh');
-  my $n = $ifh->read($$bufref, $length, $offset);
-  while ($ifh->eof && $n < $length) {
+  my $n = $ifh->read( $$bufref, $length, $offset );
+  while ( $ifh->eof && $n < $length ) {
     last if $self->EOF;
+
     # $self->EOF has lined up the next source in $self->{ifh}
     $ifh = $self->_get('ifh');
-    my $thisn = $ifh->read($$bufref, $length - $n, $offset + $n);
+    my $thisn = $ifh->read( $$bufref, $length - $n, $offset + $n );
     $n += $thisn;
   }
   return $n;
@@ -541,15 +558,15 @@ sub READ {
 sub GETC {
   my ($self) = @_;
   my $buf = '';
-  my $n = $self->READ($buf, 1, 0);
-  return $n? $buf: undef;
+  my $n = $self->READ( $buf, 1, 0 );
+  return $n ? $buf : undef;
 }
 
 sub CLOSE {
   my ($self) = @_;
-  if ($self->{ifh}) {
+  if ( $self->{ifh} ) {
     delete $self->{ifh};
-    @{$self->{sources}} = ();
+    @{ $self->{sources} } = ();
   }
   return;
 }
@@ -637,4 +654,4 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 =cut
 
-1; # End of IO::ReadHandle::Chain
+1;    # End of IO::ReadHandle::Chain

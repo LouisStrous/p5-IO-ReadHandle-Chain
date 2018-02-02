@@ -18,3 +18,4 @@ IO-ReadHandle-Chain-*
 IO-ReadHandle-Chain-*.tar.gz
 
 *~
+*.bak
