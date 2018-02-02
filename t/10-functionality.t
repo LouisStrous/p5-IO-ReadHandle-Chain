@@ -13,6 +13,7 @@ my $skipped = 0;
 
 my $cfh = IO::ReadHandle::Chain->new();
 is($cfh->input_line_number, undef, 'no data, no line number');
+is($cfh->current_source, undef, 'no data, no current source');
 is(not(defined <$cfh>), 1, 'no data');
 is(eof($cfh), 1, 'end of data');
 is($cfh->eof, 1, 'end of data (OO)');
@@ -29,6 +30,13 @@ $cfh = IO::ReadHandle::Chain->new(\$source1);
 # than bar is\n
 # by far!
 
+is($cfh->get_field('mykey'), undef, 'private key not defined');
+is($cfh->get_field('mykey', 'DEFAULT'), 'DEFAULT', 'get private key with default');
+is($cfh->get_field('mykey'), 'DEFAULT', 'private key now defined');
+is($cfh->get_field('mykey', 'BAD!'), 'DEFAULT', 'private key default ignored if already defined');
+is($cfh->set_field('key2', 'some value'), $cfh, 'set private key returns self');
+is($cfh->get_field('key2'), 'some value', 'private key set OK');
+
 my $state = [];
 while (<$cfh>) {
   push @$state,
@@ -41,7 +49,15 @@ while (<$cfh>) {
      end_of_data_OO => $cfh->eof,
     };
 }
+
+is($cfh->get_field('mykey', 'DEFAULT'), 'DEFAULT', 'private key unchanged');
+is($cfh->get_field('key2'), 'some value', 'private key 2 unchanged');
+is($cfh->remove_field('mykey'), $cfh, 'remove private key returns self');
+is($cfh->get_field('mykey'), undef, 'private key removal succeeded');
+
 $cfh->close;
+
+is($cfh->get_field('key2'), undef, 'close deletes private keys');
 
 my $title = 'source 1, separated by newline';
 is_deeply($state, [
@@ -489,4 +505,4 @@ if (open my $ofh, '>', $fname) {
   ++$skipped;
 }
 
-done_testing(33 - $skipped);
+done_testing(45 - $skipped);

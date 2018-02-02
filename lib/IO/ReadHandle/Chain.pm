@@ -23,16 +23,6 @@ use version; our $VERSION = version->declare('v1.2.0');
 
 =head1 SYNOPSIS
 
-This module chains any number of data sources (scalar, file, IO
-handle) together for reading through a single file read handle.
-
-This is convenient if you have multiple data sources of which some are
-very large and you need to pretend that they are all inside a single
-data source.
-
-Use the IO::ReadHandle::Chain object for reading as you would any
-other filehandle.
-
     use IO::ReadHandle::Chain;
 
     open $ifh, '<', 'somefile.txt';
@@ -69,6 +59,21 @@ other filehandle.
     # specific to IO::ReadHandle::Chain:
     $current_source = $cfh->current_source;
 
+    $cfh->set_field('mykey', $myvalue);
+    $value = $cfh->get_field('mykey');
+    $cfh->remove_field('mykey');
+
+=head1 DESCRIPTION
+
+This module chains any number of data sources (scalar, file, IO
+handle) together for reading through a single file read handle.  This
+is convenient if you have multiple data sources of which some are very
+large and you need to pretend that they are all inside a single data
+source.
+
+Use the IO::ReadHandle::Chain object for reading as you would any
+other filehandle.
+
 The module raises an exception if you try to C<write> or C<seek> or
 C<tell> through an C<IO::ReadHandle::Chain>.
 
@@ -78,9 +83,20 @@ to separate the data into lines.
 The chain filehandle object does not close any of the file handles
 that are passed to it as data sources.
 
+An IO::ReadHandle::Chain provides some methods that are not available
+from a standard IO::Handle:
+
+The L</set_field>, L</get_field>, and L</remove_field> methods
+manipulate fields in a private area of the object -- private in the
+sense that the other methods of the module do not access that area;
+It's all yours.
+
+The L</current_source> method identifies the current source being read
+from.
+
 =head1 METHODS
 
-=head2 new(@sources)
+=head2 new
 
   $cfh = IO::ReadHandle::Chain->new(@sources);
 
@@ -123,7 +139,6 @@ sub _get {
 sub _set {
   my ($self, $field, $value) = @_;
   my $pkg = __PACKAGE__;
-  my $old_value = *$self->{$pkg}->{$field};
   *$self->{$pkg}->{$field} = $value;
   return $self;
 }
@@ -147,9 +162,9 @@ sub _delete {
   $cfh->close;
   close $cfh;
 
-Closes the IO::ReadHandle::Chain.  Closes any internal filehandles
-that the instance was using, but does not close any filehandles that
-were passed into the instance as sources.
+Closes the IO::ReadHandle::Chain.  Closes any filehandles that the
+instance created, but does not close any filehandles that were passed
+into the instance as sources.
 
 Returns the IO::ReadHandle::Chain.
 
@@ -171,11 +186,11 @@ came from.
 
 For a source specified as a path name, returns that path name.
 
-For a source specified as a file handle, attempts to call the
-C<current_source> method on that file handle.  If that file handle
-does not support that method, or returns the undefined value, then the
-C<current_source> method returns the stringified version of the file
-handle.
+For a source specified as a filehandle, returns the result of calling
+the C<current_source> method on that filehandle, unless it returns the
+undefined value or the filehandle doesn't support the
+C<current_source> method, in which case the current method returns the
+stringified version of the filehandle.
 
 For a source specified as a reference to a scalar, returns
 C<SCALAR(...)> with the C<...> replaced with up to the first 10
@@ -186,7 +201,7 @@ characters of the scalar, with newlines replaced by spaces.
 sub current_source {
   my ($self) = @_;
   my $source = $self->_get('source');
-  return 'undef' unless defined $source;
+  return unless defined $source;
   if (ref $source) {
     if (reftype($source) eq 'GLOB') {
       my $s = eval { $source->current_source };
@@ -212,6 +227,37 @@ IO::Handle::eof.
 
 sub eof {
   return EOF(@_);
+}
+
+=head2 get_field
+
+  $value = $cfh->get_field($field);
+  $value = $cfh->get_field($field, $default);
+
+Returns the value of the private field C<$field> from the filehandle.
+
+If that field does not yet exist, and if C<$default> is not specified,
+then does not modify the object and returns the undefined value.
+
+If the field does not yet exist but C<$default> is specified, then
+creates the field, assigns it the value C<$default>, and then returns
+that value.
+
+=cut
+
+sub get_field {
+  my ($self, $field, $default) = @_;
+  my $href = $self->_get('_');
+  if (@_ >= 3) {                # $default specified
+    if (not $href) {
+      $href = {};
+      $self->_set('_', $href);
+    }
+    $href->{$field} //= $default;
+  } else {                      # no $default specified
+    return unless $href;
+  }
+  return $href->{$field};
 }
 
 =head2 getc
@@ -289,7 +335,7 @@ sub input_line_number {
   return $self->_get('line_number');
 }
 
-=head2 open(@sources)
+=head2 open
 
   $cfh->open(@sources);
 
@@ -320,7 +366,7 @@ sub open {
   return $self;
 }
 
-=head2 read($buffer, $length, $offset)
+=head2 read
 
   $cfh->read($buffer, $length, $offset);
   read $cfh, $buffer, $length, $offset;
@@ -334,6 +380,43 @@ characters read, or 0 when there are no more characters.
 
 sub read {
   return READ(@_);
+}
+
+=head2 remove_field
+
+  $cfh->remove_field($field);
+
+Removes the filehandle's private field with the specified name, if it
+exists.  Returns the filehandle.
+
+=cut
+
+sub remove_field {
+  my ($self, $field) = @_;
+  my $href = $self->_get('_');
+  if ($href) {
+    delete $href->{$field};
+  }
+  return $self;
+}
+
+=head2 set_field
+
+  $cfh->set_field($field, $value);
+
+Sets the filehandle's private field with key C<$field> to the
+specified C<$value>.  Returns the filehandle.
+
+=cut
+
+sub set_field {
+  my ($self, $field, $value) = @_;
+  my $href = $self->_get('_');
+  if (not $href) {
+    $self->_set('_', $href = {});
+  }
+  $href->{$field} = $value;
+  return $self;
 }
 
 # Tie::Handle method implementations
@@ -445,7 +528,7 @@ sub READ {
 
   my $ifh = $self->_get('ifh');
   my $n = $ifh->read($$bufref, $length, $offset);
-  while ($n < $length) {
+  while ($ifh->eof && $n < $length) {
     last if $self->EOF;
     # $self->EOF has lined up the next source in $self->{ifh}
     $ifh = $self->_get('ifh');
@@ -514,7 +597,7 @@ L<http://search.cpan.org/dist/IO-ReadHandle-Chain/>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2017 Louis Strous.
+Copyright 2017, 2018 Louis Strous.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the the Artistic License (2.0). You may obtain a
