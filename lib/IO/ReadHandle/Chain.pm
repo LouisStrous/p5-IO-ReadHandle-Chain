@@ -10,7 +10,7 @@ use Symbol qw(gensym);
 
 =head1 NAME
 
-IO::ReadHandle::Chain - Chain several sources through a single file
+B<IO::ReadHandle::Chain> - Chain several sources through a single file
 read handle
 
 =head1 VERSION
@@ -71,20 +71,20 @@ is convenient if you have multiple data sources of which some are very
 large and you need to pretend that they are all inside a single data
 source.
 
-Use the IO::ReadHandle::Chain object for reading as you would any
+Use the B<IO::ReadHandle::Chain> object for reading as you would any
 other filehandle.
 
 The module raises an exception if you try to C<write> or C<seek> or
-C<tell> through an C<IO::ReadHandle::Chain>.
+C<tell> through an B<IO::ReadHandle::Chain>.
 
-When reading by lines, then the input record separator C<$/> is used
-to separate the data into lines.
+When reading by lines, then the input record separator
+L<$E<sol>|perlvar/"$/"> is used to separate the data into lines.
 
 The chain filehandle object does not close any of the file handles
 that are passed to it as data sources.
 
-An IO::ReadHandle::Chain provides some methods that are not available
-from a standard IO::Handle:
+An B<IO::ReadHandle::Chain> provides some methods that are not
+available from a standard L<IO::Handle>:
 
 The L</set_field>, L</get_field>, and L</remove_field> methods
 manipulate fields in a private area of the object -- private in the
@@ -163,11 +163,11 @@ sub _delete {
   $cfh->close;
   close $cfh;
 
-Closes the IO::ReadHandle::Chain.  Closes any filehandles that the
-instance created, but does not close any filehandles that were passed
-into the instance as sources.
+Closes the stream.  Closes any filehandles that the instance created,
+but does not close any filehandles that were passed into the instance
+as sources.
 
-Returns the IO::ReadHandle::Chain.
+Returns the object.
 
 =cut
 
@@ -181,9 +181,9 @@ sub close {
 
   $current_source = $cfh->current_source;
 
-Returns text describing the source that the next input through
-IO::ReadHandle::Chain will come from, or (at EOF) that the last input
-came from.
+Returns text describing the source that the next input from the stream
+will come from, or (at the end of the data) that the last input came
+from.
 
 For a source specified as a path name, returns that path name.
 
@@ -220,9 +220,8 @@ sub current_source {
   $end_of_data = eof $cfh;
   $end_of_data = $cfh->eof;
 
-Returns 1 when there is no (more) data to read through the
-IO::ReadHandle::Chain, and C<''> otherwise, similar to CORE::eof and
-IO::Handle::eof.
+Returns 1 when there is no (more) data to read from the stream, and
+C<''> otherwise.
 
 =cut
 
@@ -267,9 +266,8 @@ sub get_field {
   $char = $cfh->getc;
   $char = getc $ifh;
 
-Returns the next character from the IO::ReadHandle::Chain, or C<undef>
-if there are no more characters, similar to the CORE::getc function
-and the IO::Handle::getc method.
+Returns the next character from the stream, or C<undef> if there are
+no more characters.
 
 =cut
 
@@ -281,10 +279,10 @@ sub getc {
 
   $line = $cfh->getline;
   $line = <$cfh>;
+  $line = readline $cfh;
 
-Reads the next line from the IO::ReadHandle::Chain, like
-IO::Handle::getline.  The input record separator (C<$/>) or
-end-of-data mark the end of the line.
+Reads the next line from the stream.  The input record separator
+(L<$E<sol>|perlvar/"$/">) or end-of-data mark the end of the line.
 
 =cut
 
@@ -299,9 +297,8 @@ sub getline {
   @lines = $cfh->getlines;
   @lines = <$cfh>;
 
-Reads all remaining lines from the IO::ReadHandle::Chain, like
-IO::Handle::getlines.  The input record separator (C<$/>) or
-end-of-data mark the end of each line.
+Reads all remaining lines from the stream.  The input record separator
+(L<$E<sol>|perlvar/"$/">) or end-of-data mark the end of each line.
 
 =cut
 
@@ -315,17 +312,17 @@ sub getlines {
 
   $line_number = $cfh->input_line_number;                # get
   $previous_value = $cfh->input_line_number($new_value); # set
+  $line_number = $.;     # until next read from any filehandle
 
-Returns the number of lines read through the IO::ReadHandle::Chain,
-and makes that number also available in the special variable C<$.>,
-similar to IO::Handle::input_line_number.  If no lines have been read
-yet, then returns C<undef>.
+Returns the number of lines read through the filehandle, and makes
+that number also available in the special variable L<$.|perlvar/$.>.
+If no lines have been read yet, then returns the undefined value.
 
 The line number is cumulative across all sources specified for the
-IO::ReadHandle::Chain.
+B<IO::ReadHandle::Chain>.
 
 If an argument is specified, then the method sets the current line
-number to that value.
+number to that value -- without changing the position in the stream.
 
 =cut
 
@@ -341,11 +338,11 @@ sub input_line_number {
 
   $cfh->open(@sources);
 
-(Re)opens the IO::ReadHandle::Chain object, for reading the specified
-C<@sources>.  See L</new> for details about the C<@sources>.  Croaks
-if any of the sources are unacceptable.
+(Re)opens the B<IO::ReadHandle::Chain> object, for reading the
+specified C<@sources>.  See L</new> for details about the C<@sources>.
+Croaks if any of the sources are unacceptable.
 
-Returns the IO::ReadHandle::Chain on success.
+Returns the B<IO::ReadHandle::Chain> on success.
 
 =cut
 
@@ -374,10 +371,9 @@ sub open {
   $cfh->read($buffer, $length, $offset);
   read $cfh, $buffer, $length, $offset;
 
-Attempts to read C<$length> characters from the IO::ReadHandle::Chain
-into the C<$buffer> at offset C<$offset>, similar to the CORE::read
-function and the IO::Handle::read method.  Returns the number of
-characters read, or 0 when there are no more characters.
+Reads up to C<$length> characters from the stream into the C<$buffer>
+at offset C<$offset>.  Returns the number of characters read, or 0
+when there are no more characters.
 
 =cut
 
