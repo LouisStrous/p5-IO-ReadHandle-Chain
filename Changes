@@ -1,5 +1,8 @@
 Revision history for IO-ReadHandle-Chain
 
+1.2.1   2018-02-03
+        - Improve documentation.
+
 1.2.0   2018-02-02
         - BREAKING CHANGE: no longer attempt to reset a source
           filehandle to its initial position when switching to the

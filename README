@@ -1,6 +1,6 @@
 IO-ReadHandle-Chain
 
-The current version is 1.2.0.
+The current version is 1.2.1.
 
 This module chains any number of data sources (scalar, file, IO
 handle) together for reading through a single file read handle.

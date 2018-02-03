@@ -15,11 +15,11 @@ read handle
 
 =head1 VERSION
 
-Version 1.2.0
+Version 1.2.1
 
 =cut
 
-use version; our $VERSION = version->declare('v1.2.0');
+use version; our $VERSION = version->declare('v1.2.1');
 
 =head1 SYNOPSIS
 
@@ -647,6 +647,10 @@ YOUR LOCAL LAW. UNLESS REQUIRED BY LAW, NO COPYRIGHT HOLDER OR
 CONTRIBUTOR WILL BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, OR
 CONSEQUENTIAL DAMAGES ARISING IN ANY WAY OUT OF THE USE OF THE PACKAGE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+=head1 SEE ALSO
+
+L<IO::ReadHandle::Include>.
 
 =cut
 
